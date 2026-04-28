@@ -11,6 +11,10 @@ const TOOL_DIRS = {
   trae: path.join(".trae", "skills"),
   cursor: path.join(".cursor", "skills"),
 };
+const REPO_GITIGNORE_ENTRIES = [
+  ".ai-dev/",
+  ...Object.values(TOOL_DIRS).map((toolDir) => `${toolDir.split(path.sep).join("/")}/`),
+];
 
 function getHomeDir() {
   return os.homedir();
@@ -42,6 +46,34 @@ function readJsonIfExists(filePath, fallback) {
 function writeJson(filePath, value) {
   ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function ensureRepoGitignore(projectDir) {
+  const gitignorePath = path.join(projectDir, ".gitignore");
+  const existing = fs.existsSync(gitignorePath)
+    ? fs.readFileSync(gitignorePath, "utf8")
+    : "";
+  const normalized = existing.replace(/\r\n/g, "\n");
+  const lines = normalized === "" ? [] : normalized.split("\n");
+  const existingEntries = new Set(lines);
+  const missingEntries = REPO_GITIGNORE_ENTRIES.filter((entry) => !existingEntries.has(entry));
+
+  if (missingEntries.length === 0) {
+    return;
+  }
+
+  const nextLines = [...lines];
+  while (nextLines.length > 0 && nextLines[nextLines.length - 1] === "") {
+    nextLines.pop();
+  }
+
+  if (nextLines.length > 0) {
+    nextLines.push("");
+  }
+
+  nextLines.push("# ai-dev-skills-kit");
+  nextLines.push(...missingEntries);
+  fs.writeFileSync(gitignorePath, `${nextLines.join("\n")}\n`, "utf8");
 }
 
 function listSkillDirs(sourceDir) {
@@ -200,6 +232,8 @@ function syncProject({ projectDir, sourceDir, force }) {
     installedAt: new Date().toISOString(),
     skills: {},
   };
+
+  ensureRepoGitignore(projectDir);
 
   for (const skillName of skillNames) {
     const snapshot = readSkillSnapshot(path.join(sourceDir, skillName));

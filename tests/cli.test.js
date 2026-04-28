@@ -62,6 +62,43 @@ test("syncProject skips locally edited managed skills during safe sync", () => {
   );
 });
 
+test("syncProject adds gitignore rules for installed skill folders", () => {
+  const sourceDir = makeTempDir("ai-dev-source");
+  const projectDir = makeTempDir("ai-dev-project");
+
+  writeFile(path.join(sourceDir, "debugging", "SKILL.md"), "first version");
+  syncProject({ projectDir, sourceDir, force: false });
+
+  const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
+
+  assert.match(gitignore, /# ai-dev-skills-kit/);
+  assert.match(gitignore, /\.ai-dev\//);
+  assert.match(gitignore, /\.claude\/skills\//);
+  assert.match(gitignore, /\.codex\/skills\//);
+  assert.match(gitignore, /\.cursor\/skills\//);
+  assert.match(gitignore, /\.trae\/skills\//);
+});
+
+test("syncProject preserves existing gitignore content and does not duplicate rules", () => {
+  const sourceDir = makeTempDir("ai-dev-source");
+  const projectDir = makeTempDir("ai-dev-project");
+
+  writeFile(path.join(sourceDir, "debugging", "SKILL.md"), "first version");
+  writeFile(
+    path.join(projectDir, ".gitignore"),
+    ["node_modules/", ".claude/skills/", ""].join("\n")
+  );
+
+  syncProject({ projectDir, sourceDir, force: false });
+  syncProject({ projectDir, sourceDir, force: false });
+
+  const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
+
+  assert.match(gitignore, /^node_modules\/$/m);
+  assert.equal((gitignore.match(/# ai-dev-skills-kit/g) || []).length, 1);
+  assert.equal((gitignore.match(/^\.claude\/skills\/$/gm) || []).length, 1);
+});
+
 test("summarizeResults reports skipped local changes", () => {
   const output = summarizeResults([
     { toolName: "claudecode", skillName: "debugging", status: "created" },
