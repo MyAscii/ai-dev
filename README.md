@@ -1,97 +1,78 @@
 # ai-dev-skills-kit
 
-A tiny global CLI for syncing your reusable AI coding skills into new repositories.
+`ai-dev-skills-kit` is a small Node.js CLI for installing and syncing local AI skills into project-local folders for Claude Code, Codex, Cursor, and Trae. It is a simpler, lighter implementation of the `rulesync` idea, focused only on skills.
 
-This version is intentionally skills-only:
+It keeps one canonical skills directory on your machine and mirrors those skills into each repository.
 
-- no global instruction markdown files
-- no project context markdown files
-- no rulesync integration
-- one central local skills folder
-- project-local installs for Claude Code, Codex, Cursor, and Trae
+## Requirements
 
-## What It Does
-
-Install and sync your own skills from a single local source folder into the current repo.
-
-Supported project-local targets:
-
-- `.claude/skills/`
-- `.codex/skills/`
-- `.cursor/skills/`
-- `.trae/skills/`
-
-The command is designed for this workflow:
-
-1. Keep all of your canonical skills in one local folder.
-2. Open any new repo.
-3. Run `ai-dev init`.
-4. Get project-local copies for all four tools.
-5. Later add or update skills centrally, then run `ai-dev sync`.
-
-## Canonical Skill Format
-
-The source of truth is one canonical skill format:
-
-```text
-~/.ai-dev/skills/
-  debugging/
-    SKILL.md
-  code-review/
-    SKILL.md
-  writing-tests/
-    SKILL.md
-```
-
-Each skill must be a folder containing `SKILL.md`.
-
-Optional extra files are fine too:
-
-```text
-my-skill/
-  SKILL.md
-  references/
-  scripts/
-  assets/
-```
+- Node.js `18+`
 
 ## Install
-
-From this repo:
 
 ```bash
 npm install -g .
 ```
 
-Then run:
+## Quick Start
+
+1. Create the central skills directory:
 
 ```bash
 ai-dev setup
 ```
 
-That creates your central source folder if it does not already exist.
+2. Add skills under your home directory:
+
+```text
+~/.ai-dev/skills/
+  my-skill/
+    SKILL.md
+```
+
+3. In any repository, install all skills:
+
+```bash
+ai-dev init
+```
+
+4. After updating skills centrally, refresh the current repository:
+
+```bash
+ai-dev sync
+```
+
+## Skill Format
+
+Each skill must be a directory containing `SKILL.md`.
+
+```text
+~/.ai-dev/skills/
+  debugging/
+    SKILL.md
+  tdd/
+    SKILL.md
+    tests.md
+```
+
+Additional files inside a skill directory are copied as-is.
 
 ## Commands
 
 ### `ai-dev setup`
 
-Creates the default central local source:
+Creates the default local configuration and central skill source:
 
 ```text
-~/.ai-dev/skills/
 ~/.ai-dev/config.json
+~/.ai-dev/skills/
 ```
 
 ### `ai-dev init`
 
-Installs all central skills into the current repo for:
+Installs all skills from the configured source into the current repository.
 
-- Claude Code
-- Codex
-- Cursor
-- Trae
-
-This writes:
+Created targets:
 
 ```text
 .claude/skills/
@@ -101,15 +82,20 @@ This writes:
 .ai-dev/state.json
 ```
 
+The CLI also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed.
+
 ### `ai-dev sync`
 
-Refreshes the current repo from the central source folder:
+Synchronizes the current repository with the central skill source.
 
-- adds new skills
-- updates previously managed unchanged skills
-- skips locally edited skills by default
+Default behavior:
 
-Use `--force` if you want to overwrite locally changed managed skills:
+- creates missing skills
+- updates unchanged managed skills when the source changed
+- leaves unchanged skills alone
+- skips locally modified managed skills
+
+Force overwrite locally modified managed skills:
 
 ```bash
 ai-dev sync --force
@@ -117,69 +103,24 @@ ai-dev sync --force
 
 ### `ai-dev status`
 
-Shows the current repo state file information and installed skill names.
+Prints the configured source, managed tools, and tracked skills for the current repository.
 
-## Safe Sync Model
+## Safe Sync
 
-This tool uses a tiny repo-local state file:
+The CLI writes a repository-local state file at `.ai-dev/state.json`.
 
-```text
-.ai-dev/state.json
-```
+The state file records:
 
-It records:
+- configured source directory
+- managed tool targets
+- installed skill metadata
+- content hashes for managed files
 
-- the source folder used
-- the target tools
-- the installed skills
-- hashes of managed file contents
+This allows `sync` to update only skills that are still under tool management and avoid overwriting local edits by default.
 
-That lets `sync` do safe updates instead of blindly overwriting local repo changes.
+## Tool Targets
 
-Default behavior:
-
-- missing skill -> create it
-- unchanged managed skill -> leave it alone
-- changed central skill + unchanged repo copy -> update it
-- changed repo copy -> skip it
-
-## Empty Skills Folder
-
-This repo includes an empty `skills/` directory as the local canonical structure reference.
-
-You said you want to import your skills later, so this repo does not ship with sample skills.
-
-## Example Usage
-
-Set up your machine once:
-
-```bash
-ai-dev setup
-```
-
-Add your own skills under:
-
-```text
-~/.ai-dev/skills/
-```
-
-Then in a new repo:
-
-```bash
-ai-dev init
-```
-
-Later, after adding new skills centrally:
-
-```bash
-ai-dev sync
-```
-
-## Notes On Tool Support
-
-- Claude Code: installs to `.claude/skills`
-- Codex: installs to `.codex/skills`
-- Cursor: installs to `.cursor/skills`
-- Trae: installs to `.trae/skills`
-
-This tool assumes a shared `SKILL.md`-style skill directory as the canonical source and mirrors that structure into each tool's project-local skill folder.
+- Claude Code: `.claude/skills`
+- Codex: `.codex/skills`
+- Cursor: `.cursor/skills`
+- Trae: `.trae/skills`
