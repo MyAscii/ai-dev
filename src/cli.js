@@ -119,8 +119,8 @@ function ensureRepoGitignore(projectDir, entries = REPO_GITIGNORE_ENTRIES) {
     nextLines.push("");
   }
 
-  if (!existingEntries.has("# ai-dev-skills-kit")) {
-    nextLines.push("# ai-dev-skills-kit");
+  if (!existingEntries.has("# ai-dev")) {
+    nextLines.push("# ai-dev");
   }
   nextLines.push(...missingEntries);
   fs.writeFileSync(gitignorePath, `${nextLines.join("\n")}\n`, "utf8");
@@ -188,7 +188,7 @@ function getStatePath(projectDir) {
 
 function readState(projectDir) {
   return readJsonIfExists(getStatePath(projectDir), {
-    kit: "ai-dev-skills-kit",
+    kit: "ai-dev",
     version: VERSION,
     sourceDir: null,
     tools: Object.keys(TOOL_DIRS),
@@ -276,7 +276,7 @@ function syncProject({ projectDir, sourceDir, force }) {
   const tools = Object.keys(TOOL_DIRS);
   const results = [];
   const nextState = {
-    kit: "ai-dev-skills-kit",
+    kit: "ai-dev",
     version: VERSION,
     sourceDir,
     tools,

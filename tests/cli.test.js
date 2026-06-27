@@ -91,7 +91,7 @@ test("syncProject adds gitignore rules for installed skill folders", () => {
 
   const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
 
-  assert.match(gitignore, /# ai-dev-skills-kit/);
+  assert.match(gitignore, /# ai-dev/);
   assert.match(gitignore, /\.ai-dev\//);
   assert.match(gitignore, /\.claude\/skills\//);
   assert.match(gitignore, /\.codex\/skills\//);
@@ -115,7 +115,7 @@ test("syncProject preserves existing gitignore content and does not duplicate ru
   const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
 
   assert.match(gitignore, /^node_modules\/$/m);
-  assert.equal((gitignore.match(/# ai-dev-skills-kit/g) || []).length, 1);
+  assert.equal((gitignore.match(/# ai-dev/g) || []).length, 1);
   assert.equal((gitignore.match(/^\.claude\/skills\/$/gm) || []).length, 1);
 });
 
@@ -173,7 +173,7 @@ test("installRootFiles gitignores the files it distributes", () => {
   installRootFiles({ projectDir, templatesDir });
 
   const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
-  assert.match(gitignore, /# ai-dev-skills-kit/);
+  assert.match(gitignore, /# ai-dev/);
   assert.match(gitignore, /^\/AGENTS\.md$/m);
   assert.match(gitignore, /^\/CLAUDE\.md$/m);
 });
@@ -190,7 +190,7 @@ test("init keeps a single gitignore header across skills and root files", () => 
   installRootFiles({ projectDir, templatesDir });
 
   const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
-  assert.equal((gitignore.match(/# ai-dev-skills-kit/g) || []).length, 1);
+  assert.equal((gitignore.match(/# ai-dev/g) || []).length, 1);
   assert.match(gitignore, /\.claude\/skills\//);
   assert.match(gitignore, /^\/AGENTS\.md$/m);
 });

@@ -1,8 +1,8 @@
-# ai-dev-skills-kit
+# ai-dev
 
-`ai-dev-skills-kit` is a small Node.js CLI for installing and syncing local AI skills into project-local folders for Claude Code, Codex, Cursor, and Trae. It is a simpler, lighter implementation of the `rulesync` idea, focused only on skills.
+`ai-dev` is a small Node.js CLI for installing and syncing local AI skills into project-local folders for Claude Code, Codex, Cursor, and Trae. It is a simpler, lighter implementation of the `rulesync` idea, focused on skills plus shared root instruction files.
 
-It keeps one canonical skills directory on your machine and mirrors those skills into each repository.
+It keeps one canonical skills directory on your machine and mirrors those skills, along with your preferred `AGENTS.md` / `CLAUDE.md`, into each repository.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ token is required, so the generic verb names do nothing on their own.
 
 ## Quick Start
 
-1. Create the central skills directory:
+1. Create the central skills directory and template files:
 
 ```bash
 setup ai-dev
@@ -38,13 +38,13 @@ setup ai-dev
     SKILL.md
 ```
 
-3. In any repository, install all skills:
+3. In any repository, install all skills and root files:
 
 ```bash
 init ai-dev
 ```
 
-4. After updating skills centrally, refresh the current repository:
+4. After updating skills or templates centrally, refresh the current repository:
 
 ```bash
 sync ai-dev
@@ -98,7 +98,7 @@ AGENTS.md   # from ~/.ai-dev/templates/, only if missing
 CLAUDE.md   # from ~/.ai-dev/templates/, only if missing
 ```
 
-The CLI also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed. The distributed root files (`AGENTS.md`, `CLAUDE.md`) are gitignored too (as `/AGENTS.md`, `/CLAUDE.md`), so they stay local to each repo and are not committed.
+`ai-dev` also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed. The distributed root files (`AGENTS.md`, `CLAUDE.md`) are gitignored too (as `/AGENTS.md`, `/CLAUDE.md`), so they stay local to each repo and are not committed.
 
 ### `sync ai-dev`
 
@@ -123,7 +123,7 @@ Prints the configured source, managed tools, and tracked skills for the current 
 
 ## Safe Sync
 
-The CLI writes a repository-local state file at `.ai-dev/state.json`.
+`ai-dev` writes a repository-local state file at `.ai-dev/state.json`.
 
 The state file records:
 
@@ -136,7 +136,7 @@ This allows `sync` to update only skills that are still under tool management an
 
 ## Root Instruction Files
 
-Alongside skills, the kit distributes your preferred root instruction files so every
+Alongside skills, `ai-dev` distributes your preferred root instruction files so every
 new repository starts with the conventions you like.
 
 - Source: `~/.ai-dev/templates/` (seeded with `AGENTS.md` and `CLAUDE.md` on `setup`).

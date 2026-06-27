@@ -1,7 +1,7 @@
 {
-  "name": "ai-dev-skills-kit",
+  "name": "ai-dev",
   "version": "0.1.0",
-  "description": "Tiny CLI for installing and syncing local AI coding skills into project-local tool folders.",
+  "description": "Tiny CLI for installing and syncing local AI coding skills and shared AGENTS.md/CLAUDE.md into project-local tool folders.",
   "bin": {
     "setup": "./bin/setup.js",
     "init": "./bin/init.js",
