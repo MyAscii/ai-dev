@@ -11,6 +11,8 @@ const {
   installRootFiles,
   summarizeRootResults,
   runVerb,
+  seedSkillsFromPackage,
+  seedTemplatesFromPackage,
 } = require("../src/cli");
 
 function makeTempDir(name) {
@@ -203,6 +205,71 @@ test("summarizeRootResults reports created and kept counts", () => {
 
   assert.match(output, /created: 1, kept: 1/);
   assert.match(output, /- created AGENTS\.md/);
+});
+
+test("seedTemplatesFromPackage copies the repo's real AGENTS.md/CLAUDE.md", () => {
+  const packageRoot = makeTempDir("ai-dev-pkg");
+  const templatesDir = makeTempDir("ai-dev-templates");
+
+  writeFile(path.join(packageRoot, "AGENTS.md"), "real custom instructions");
+  writeFile(path.join(packageRoot, "CLAUDE.md"), "@AGENTS.md\n");
+
+  seedTemplatesFromPackage(templatesDir, packageRoot);
+
+  assert.equal(
+    fs.readFileSync(path.join(templatesDir, "AGENTS.md"), "utf8"),
+    "real custom instructions"
+  );
+  assert.equal(
+    fs.readFileSync(path.join(templatesDir, "CLAUDE.md"), "utf8"),
+    "@AGENTS.md\n"
+  );
+});
+
+test("seedTemplatesFromPackage overwrites a stale scaffold", () => {
+  const packageRoot = makeTempDir("ai-dev-pkg");
+  const templatesDir = makeTempDir("ai-dev-templates");
+
+  writeFile(path.join(packageRoot, "AGENTS.md"), "real custom instructions");
+  writeFile(path.join(packageRoot, "CLAUDE.md"), "@AGENTS.md\n");
+  writeFile(path.join(templatesDir, "AGENTS.md"), "# AGENTS.md\n\n<!-- empty scaffold -->\n");
+
+  seedTemplatesFromPackage(templatesDir, packageRoot);
+
+  assert.equal(
+    fs.readFileSync(path.join(templatesDir, "AGENTS.md"), "utf8"),
+    "real custom instructions"
+  );
+});
+
+test("seedTemplatesFromPackage falls back to scaffold when the repo lacks the file", () => {
+  const packageRoot = makeTempDir("ai-dev-pkg");
+  const templatesDir = makeTempDir("ai-dev-templates");
+
+  seedTemplatesFromPackage(templatesDir, packageRoot);
+
+  const agents = fs.readFileSync(path.join(templatesDir, "AGENTS.md"), "utf8");
+  assert.match(agents, /# AGENTS.md/);
+});
+
+test("seedSkillsFromPackage seeds bundled skills but keeps existing ones", () => {
+  const packageRoot = makeTempDir("ai-dev-pkg");
+  const sourceDir = makeTempDir("ai-dev-source");
+
+  writeFile(path.join(packageRoot, "skills", "tdd", "SKILL.md"), "bundled tdd");
+  writeFile(path.join(packageRoot, "skills", "debugging", "SKILL.md"), "bundled debugging");
+  writeFile(path.join(sourceDir, "tdd", "SKILL.md"), "my local tdd");
+
+  seedSkillsFromPackage(sourceDir, packageRoot);
+
+  assert.equal(
+    fs.readFileSync(path.join(sourceDir, "tdd", "SKILL.md"), "utf8"),
+    "my local tdd"
+  );
+  assert.equal(
+    fs.readFileSync(path.join(sourceDir, "debugging", "SKILL.md"), "utf8"),
+    "bundled debugging"
+  );
 });
 
 test("runVerb requires the ai-dev namespace token", async () => {
