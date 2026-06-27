@@ -11,6 +11,8 @@ It keeps one canonical skills directory on your machine and mirrors those skills
 ## Install
 
 ```bash
+git clone https://github.com/MyAscii/ai-dev.git
+cd ai-dev
 npm link
 ```
 
