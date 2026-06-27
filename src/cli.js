@@ -16,12 +16,60 @@ const REPO_GITIGNORE_ENTRIES = [
   ...Object.values(TOOL_DIRS).map((toolDir) => `${toolDir.split(path.sep).join("/")}/`),
 ];
 
+const DEFAULT_AGENTS_MD = `# AGENTS.md
+
+Shared instructions for AI coding agents working in this repository.
+Read natively by Codex, Cursor, and Trae. Claude Code reads it via the
+\`@AGENTS.md\` import in \`CLAUDE.md\`.
+
+## Project overview
+
+<!-- What this project is, in a sentence or two. -->
+
+## Setup & commands
+
+<!-- e.g.
+- Install: \`...\`
+- Build: \`...\`
+- Test: \`...\`
+- Lint: \`...\`
+-->
+
+## Conventions
+
+<!-- Coding style, naming, structure, anything an agent should follow. -->
+
+## Things to be careful with
+
+<!-- Dirs/files that need extra care, gotchas, do-not-touch areas. -->
+`;
+
+const DEFAULT_CLAUDE_MD = `@AGENTS.md
+
+## Claude Code
+
+<!-- Claude Code-specific instructions go here (these are NOT shared with other tools).
+     Examples:
+     - Use plan mode for changes under \`src/...\`.
+     - Always run \`npm test\` before committing.
+-->
+`;
+
+const DEFAULT_TEMPLATE_FILES = {
+  "AGENTS.md": DEFAULT_AGENTS_MD,
+  "CLAUDE.md": DEFAULT_CLAUDE_MD,
+};
+
 function getHomeDir() {
   return os.homedir();
 }
 
 function getDefaultSourceDir() {
   return path.join(getHomeDir(), ".ai-dev", "skills");
+}
+
+function getDefaultTemplatesDir() {
+  return path.join(getHomeDir(), ".ai-dev", "templates");
 }
 
 function getDefaultConfigPath() {
@@ -48,7 +96,7 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function ensureRepoGitignore(projectDir) {
+function ensureRepoGitignore(projectDir, entries = REPO_GITIGNORE_ENTRIES) {
   const gitignorePath = path.join(projectDir, ".gitignore");
   const existing = fs.existsSync(gitignorePath)
     ? fs.readFileSync(gitignorePath, "utf8")
@@ -56,7 +104,7 @@ function ensureRepoGitignore(projectDir) {
   const normalized = existing.replace(/\r\n/g, "\n");
   const lines = normalized === "" ? [] : normalized.split("\n");
   const existingEntries = new Set(lines);
-  const missingEntries = REPO_GITIGNORE_ENTRIES.filter((entry) => !existingEntries.has(entry));
+  const missingEntries = entries.filter((entry) => !existingEntries.has(entry));
 
   if (missingEntries.length === 0) {
     return;
@@ -71,7 +119,9 @@ function ensureRepoGitignore(projectDir) {
     nextLines.push("");
   }
 
-  nextLines.push("# ai-dev-skills-kit");
+  if (!existingEntries.has("# ai-dev-skills-kit")) {
+    nextLines.push("# ai-dev-skills-kit");
+  }
   nextLines.push(...missingEntries);
   fs.writeFileSync(gitignorePath, `${nextLines.join("\n")}\n`, "utf8");
 }
@@ -128,7 +178,8 @@ function resolveConfig() {
   const configPath = getDefaultConfigPath();
   const config = readJsonIfExists(configPath, {});
   const sourceDir = config.sourceDir || getDefaultSourceDir();
-  return { configPath, sourceDir };
+  const templatesDir = config.templatesDir || getDefaultTemplatesDir();
+  return { configPath, sourceDir, templatesDir };
 }
 
 function getStatePath(projectDir) {
@@ -295,10 +346,62 @@ function summarizeResults(results) {
   return lines.join("\n");
 }
 
+function installRootFiles({ projectDir, templatesDir }) {
+  if (!fs.existsSync(templatesDir)) {
+    return [];
+  }
+
+  const results = [];
+  for (const fullPath of walkFiles(templatesDir)) {
+    const relativePath = path.relative(templatesDir, fullPath).split(path.sep).join("/");
+    const destinationPath = path.join(projectDir, ...relativePath.split("/"));
+
+    if (fs.existsSync(destinationPath)) {
+      results.push({ file: relativePath, status: "kept" });
+      continue;
+    }
+
+    ensureDir(path.dirname(destinationPath));
+    fs.copyFileSync(fullPath, destinationPath);
+    results.push({ file: relativePath, status: "created" });
+  }
+
+  if (results.length > 0) {
+    ensureRepoGitignore(
+      projectDir,
+      results.map((result) => `/${result.file}`)
+    );
+  }
+
+  return results;
+}
+
+function summarizeRootResults(results) {
+  const created = results.filter((result) => result.status === "created");
+  const kept = results.filter((result) => result.status === "kept");
+  const lines = [`Root files — created: ${created.length}, kept: ${kept.length}`];
+  for (const result of created) {
+    lines.push(`- created ${result.file}`);
+  }
+  return lines.join("\n");
+}
+
+function seedDefaultTemplates(templatesDir) {
+  ensureDir(templatesDir);
+  for (const [name, content] of Object.entries(DEFAULT_TEMPLATE_FILES)) {
+    const filePath = path.join(templatesDir, name);
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, content, "utf8");
+    }
+  }
+}
+
 function runSetup() {
   const configPath = getDefaultConfigPath();
   const sourceDir = getDefaultSourceDir();
+  const templatesDir = getDefaultTemplatesDir();
   ensureDir(sourceDir);
+  seedDefaultTemplates(templatesDir);
 
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, { sourceDir });
@@ -306,11 +409,13 @@ function runSetup() {
 
   console.log(`Central skills folder: ${sourceDir}`);
   console.log("Add your skill folders there. Each skill must contain `SKILL.md`.");
+  console.log(`Central templates folder: ${templatesDir}`);
+  console.log("Edit AGENTS.md / CLAUDE.md there; they are copied into each repo on init/sync.");
 }
 
 function runInitOrSync({ force }) {
   const projectDir = process.cwd();
-  const { sourceDir } = resolveConfig();
+  const { sourceDir, templatesDir } = resolveConfig();
 
   if (!fs.existsSync(sourceDir)) {
     throw new Error(`Central skills folder not found: ${sourceDir}\nRun \`ai-dev setup\` first.`);
@@ -319,6 +424,13 @@ function runInitOrSync({ force }) {
   const results = syncProject({ projectDir, sourceDir, force });
   console.log(`Source: ${sourceDir}`);
   console.log(summarizeResults(results));
+
+  const rootResults = installRootFiles({ projectDir, templatesDir });
+  if (rootResults.length > 0) {
+    console.log("");
+    console.log(`Templates: ${templatesDir}`);
+    console.log(summarizeRootResults(rootResults));
+  }
 }
 
 function runStatus() {
@@ -370,11 +482,16 @@ async function main(argv) {
 module.exports = {
   TOOL_DIRS,
   STATE_RELATIVE_PATH,
+  DEFAULT_TEMPLATE_FILES,
   getDefaultSourceDir,
   getDefaultConfigPath,
+  getDefaultTemplatesDir,
   listSkillDirs,
   readSkillSnapshot,
   syncProject,
+  installRootFiles,
   summarizeResults,
+  summarizeRootResults,
+  seedDefaultTemplates,
   main,
 };

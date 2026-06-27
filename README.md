@@ -61,12 +61,18 @@ Additional files inside a skill directory are copied as-is.
 
 ### `ai-dev setup`
 
-Creates the default local configuration and central skill source:
+Creates the default local configuration, central skill source, and template root files:
 
 ```text
 ~/.ai-dev/config.json
 ~/.ai-dev/skills/
+~/.ai-dev/templates/
+  AGENTS.md
+  CLAUDE.md
 ```
+
+Edit the files under `~/.ai-dev/templates/` once; they are copied into the root of
+every repository on `init`/`sync`. See [Root Instruction Files](#root-instruction-files).
 
 ### `ai-dev init`
 
@@ -80,9 +86,11 @@ Created targets:
 .cursor/skills/
 .trae/skills/
 .ai-dev/state.json
+AGENTS.md   # from ~/.ai-dev/templates/, only if missing
+CLAUDE.md   # from ~/.ai-dev/templates/, only if missing
 ```
 
-The CLI also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed.
+The CLI also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed. Root instruction files (`AGENTS.md`, `CLAUDE.md`) are **not** gitignored — they are meant to be committed and shared.
 
 ### `ai-dev sync`
 
@@ -117,6 +125,21 @@ The state file records:
 - content hashes for managed files
 
 This allows `sync` to update only skills that are still under tool management and avoid overwriting local edits by default.
+
+## Root Instruction Files
+
+Alongside skills, the kit distributes your preferred root instruction files so every
+new repository starts with the conventions you like.
+
+- Source: `~/.ai-dev/templates/` (seeded with `AGENTS.md` and `CLAUDE.md` on `setup`).
+- On `init`/`sync`, every file in that folder is copied to the repository root.
+- Copies are **create-if-missing**: an existing file in the repo is never overwritten,
+  so per-repo edits are safe (even with `--force`, which only affects skills).
+- These files are **not** gitignored — commit them so your team shares them.
+
+`AGENTS.md` is the single source of truth. Codex, Cursor, and Trae read it natively;
+Claude Code reads it through the `@AGENTS.md` import on the first line of `CLAUDE.md`.
+Edit the templates once centrally and every repo inherits them.
 
 ## Tool Targets
 

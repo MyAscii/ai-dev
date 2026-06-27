@@ -4,7 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 
-const { syncProject, summarizeResults } = require("../src/cli");
+const {
+  syncProject,
+  summarizeResults,
+  installRootFiles,
+  summarizeRootResults,
+} = require("../src/cli");
 
 function makeTempDir(name) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
@@ -97,6 +102,92 @@ test("syncProject preserves existing gitignore content and does not duplicate ru
   assert.match(gitignore, /^node_modules\/$/m);
   assert.equal((gitignore.match(/# ai-dev-skills-kit/g) || []).length, 1);
   assert.equal((gitignore.match(/^\.claude\/skills\/$/gm) || []).length, 1);
+});
+
+test("installRootFiles copies template files into the repo root", () => {
+  const templatesDir = makeTempDir("ai-dev-templates");
+  const projectDir = makeTempDir("ai-dev-project");
+
+  writeFile(path.join(templatesDir, "AGENTS.md"), "shared instructions");
+  writeFile(path.join(templatesDir, "CLAUDE.md"), "@AGENTS.md\n");
+
+  const results = installRootFiles({ projectDir, templatesDir });
+
+  assert.equal(results.length, 2);
+  assert.equal(
+    fs.readFileSync(path.join(projectDir, "AGENTS.md"), "utf8"),
+    "shared instructions"
+  );
+  assert.equal(
+    fs.readFileSync(path.join(projectDir, "CLAUDE.md"), "utf8"),
+    "@AGENTS.md\n"
+  );
+  assert.ok(results.every((result) => result.status === "created"));
+});
+
+test("installRootFiles never overwrites an existing root file", () => {
+  const templatesDir = makeTempDir("ai-dev-templates");
+  const projectDir = makeTempDir("ai-dev-project");
+
+  writeFile(path.join(templatesDir, "AGENTS.md"), "template version");
+  writeFile(path.join(projectDir, "AGENTS.md"), "repo-specific edit");
+
+  const results = installRootFiles({ projectDir, templatesDir });
+
+  assert.equal(results[0].status, "kept");
+  assert.equal(
+    fs.readFileSync(path.join(projectDir, "AGENTS.md"), "utf8"),
+    "repo-specific edit"
+  );
+});
+
+test("installRootFiles returns nothing when there is no templates folder", () => {
+  const projectDir = makeTempDir("ai-dev-project");
+  const templatesDir = path.join(projectDir, "does-not-exist");
+
+  assert.deepEqual(installRootFiles({ projectDir, templatesDir }), []);
+});
+
+test("installRootFiles gitignores the files it distributes", () => {
+  const templatesDir = makeTempDir("ai-dev-templates");
+  const projectDir = makeTempDir("ai-dev-project");
+
+  writeFile(path.join(templatesDir, "AGENTS.md"), "shared instructions");
+  writeFile(path.join(templatesDir, "CLAUDE.md"), "@AGENTS.md\n");
+
+  installRootFiles({ projectDir, templatesDir });
+
+  const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
+  assert.match(gitignore, /# ai-dev-skills-kit/);
+  assert.match(gitignore, /^\/AGENTS\.md$/m);
+  assert.match(gitignore, /^\/CLAUDE\.md$/m);
+});
+
+test("init keeps a single gitignore header across skills and root files", () => {
+  const sourceDir = makeTempDir("ai-dev-source");
+  const templatesDir = makeTempDir("ai-dev-templates");
+  const projectDir = makeTempDir("ai-dev-project");
+
+  writeFile(path.join(sourceDir, "debugging", "SKILL.md"), "first version");
+  writeFile(path.join(templatesDir, "AGENTS.md"), "shared instructions");
+
+  syncProject({ projectDir, sourceDir, force: false });
+  installRootFiles({ projectDir, templatesDir });
+
+  const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
+  assert.equal((gitignore.match(/# ai-dev-skills-kit/g) || []).length, 1);
+  assert.match(gitignore, /\.claude\/skills\//);
+  assert.match(gitignore, /^\/AGENTS\.md$/m);
+});
+
+test("summarizeRootResults reports created and kept counts", () => {
+  const output = summarizeRootResults([
+    { file: "AGENTS.md", status: "created" },
+    { file: "CLAUDE.md", status: "kept" },
+  ]);
+
+  assert.match(output, /created: 1, kept: 1/);
+  assert.match(output, /- created AGENTS\.md/);
 });
 
 test("summarizeResults reports skipped local changes", () => {
