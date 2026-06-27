@@ -13,6 +13,7 @@ const {
   runVerb,
   seedSkillsFromPackage,
   seedTemplatesFromPackage,
+  pullPackageRepo,
 } = require("../src/cli");
 
 function makeTempDir(name) {
@@ -197,14 +198,51 @@ test("init keeps a single gitignore header across skills and root files", () => 
   assert.match(gitignore, /^\/AGENTS\.md$/m);
 });
 
-test("summarizeRootResults reports created and kept counts", () => {
+test("summarizeRootResults reports created, updated, and kept counts", () => {
   const output = summarizeRootResults([
-    { file: "AGENTS.md", status: "created" },
+    { file: "AGENTS.md", status: "updated" },
     { file: "CLAUDE.md", status: "kept" },
   ]);
 
-  assert.match(output, /created: 1, kept: 1/);
-  assert.match(output, /- created AGENTS\.md/);
+  assert.match(output, /created: 0, updated: 1, kept: 1/);
+  assert.match(output, /- updated AGENTS\.md/);
+});
+
+test("installRootFiles with overwrite replaces an existing root file", () => {
+  const templatesDir = makeTempDir("ai-dev-templates");
+  const projectDir = makeTempDir("ai-dev-project");
+
+  writeFile(path.join(templatesDir, "AGENTS.md"), "newest from central");
+  writeFile(path.join(projectDir, "AGENTS.md"), "stale blank scaffold");
+
+  const results = installRootFiles({ projectDir, templatesDir, overwrite: true });
+
+  assert.equal(results[0].status, "updated");
+  assert.equal(
+    fs.readFileSync(path.join(projectDir, "AGENTS.md"), "utf8"),
+    "newest from central"
+  );
+});
+
+test("seedSkillsFromPackage with overwrite refreshes an existing skill", () => {
+  const packageRoot = makeTempDir("ai-dev-pkg");
+  const sourceDir = makeTempDir("ai-dev-source");
+
+  writeFile(path.join(packageRoot, "skills", "tdd", "SKILL.md"), "v2 from repo");
+  writeFile(path.join(sourceDir, "tdd", "SKILL.md"), "v1 in central");
+
+  seedSkillsFromPackage(sourceDir, packageRoot, { overwrite: true });
+
+  assert.equal(
+    fs.readFileSync(path.join(sourceDir, "tdd", "SKILL.md"), "utf8"),
+    "v2 from repo"
+  );
+});
+
+test("pullPackageRepo reports failure on a non-git directory", () => {
+  const notARepo = makeTempDir("ai-dev-notgit");
+  const result = pullPackageRepo(notARepo);
+  assert.equal(result.ok, false);
 });
 
 test("seedTemplatesFromPackage copies the repo's real AGENTS.md/CLAUDE.md", () => {
@@ -274,7 +312,7 @@ test("seedSkillsFromPackage seeds bundled skills but keeps existing ones", () =>
 
 test("runVerb requires the ai-dev namespace token", async () => {
   await assert.rejects(() => runVerb("init", []), /Usage: init ai-dev/);
-  await assert.rejects(() => runVerb("sync", ["nope"]), /Usage: sync ai-dev \[--force\]/);
+  await assert.rejects(() => runVerb("sync", ["nope"]), /Usage: sync ai-dev/);
 });
 
 test("runVerb rejects an unknown verb", async () => {

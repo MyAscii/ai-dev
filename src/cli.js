@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
+const { execFileSync } = require("node:child_process");
 
 const VERSION = "0.1.0";
 const STATE_RELATIVE_PATH = path.join(".ai-dev", "state.json");
@@ -346,7 +347,7 @@ function summarizeResults(results) {
   return lines.join("\n");
 }
 
-function installRootFiles({ projectDir, templatesDir }) {
+function installRootFiles({ projectDir, templatesDir, overwrite = false }) {
   if (!fs.existsSync(templatesDir)) {
     return [];
   }
@@ -355,15 +356,16 @@ function installRootFiles({ projectDir, templatesDir }) {
   for (const fullPath of walkFiles(templatesDir)) {
     const relativePath = path.relative(templatesDir, fullPath).split(path.sep).join("/");
     const destinationPath = path.join(projectDir, ...relativePath.split("/"));
+    const existed = fs.existsSync(destinationPath);
 
-    if (fs.existsSync(destinationPath)) {
+    if (existed && !overwrite) {
       results.push({ file: relativePath, status: "kept" });
       continue;
     }
 
     ensureDir(path.dirname(destinationPath));
     fs.copyFileSync(fullPath, destinationPath);
-    results.push({ file: relativePath, status: "created" });
+    results.push({ file: relativePath, status: existed ? "updated" : "created" });
   }
 
   if (results.length > 0) {
@@ -378,10 +380,13 @@ function installRootFiles({ projectDir, templatesDir }) {
 
 function summarizeRootResults(results) {
   const created = results.filter((result) => result.status === "created");
+  const updated = results.filter((result) => result.status === "updated");
   const kept = results.filter((result) => result.status === "kept");
-  const lines = [`Root files — created: ${created.length}, kept: ${kept.length}`];
-  for (const result of created) {
-    lines.push(`- created ${result.file}`);
+  const lines = [
+    `Root files — created: ${created.length}, updated: ${updated.length}, kept: ${kept.length}`,
+  ];
+  for (const result of [...created, ...updated]) {
+    lines.push(`- ${result.status} ${result.file}`);
   }
   return lines.join("\n");
 }
@@ -407,7 +412,7 @@ function seedTemplatesFromPackage(templatesDir, packageRoot = PACKAGE_ROOT) {
   }
 }
 
-function seedSkillsFromPackage(sourceDir, packageRoot = PACKAGE_ROOT) {
+function seedSkillsFromPackage(sourceDir, packageRoot = PACKAGE_ROOT, { overwrite = false } = {}) {
   ensureDir(sourceDir);
   const bundledSkillsDir = path.join(packageRoot, "skills");
   if (!fs.existsSync(bundledSkillsDir)) {
@@ -416,44 +421,87 @@ function seedSkillsFromPackage(sourceDir, packageRoot = PACKAGE_ROOT) {
   for (const skillName of listSkillDirs(bundledSkillsDir)) {
     const dest = path.join(sourceDir, skillName);
     if (fs.existsSync(dest)) {
-      continue; // keep skills already in the central store
+      if (!overwrite) {
+        continue; // keep skills already in the central store
+      }
+      removeDirIfExists(dest);
     }
     const snapshot = readSkillSnapshot(path.join(bundledSkillsDir, skillName));
     copySkillFiles(dest, snapshot);
   }
 }
 
-function runSetup() {
-  const configPath = getDefaultConfigPath();
+function seedCentral({ overwrite = false } = {}) {
   const sourceDir = getDefaultSourceDir();
   const templatesDir = getDefaultTemplatesDir();
-
-  seedSkillsFromPackage(sourceDir);
+  seedSkillsFromPackage(sourceDir, PACKAGE_ROOT, { overwrite });
   seedTemplatesFromPackage(templatesDir);
 
+  const configPath = getDefaultConfigPath();
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, { sourceDir });
   }
+  return { sourceDir, templatesDir };
+}
 
+function pullPackageRepo(packageRoot = PACKAGE_ROOT) {
+  try {
+    const output = execFileSync("git", ["-C", packageRoot, "pull", "--ff-only"], {
+      encoding: "utf8",
+    });
+    return { ok: true, output: output.trim() };
+  } catch (error) {
+    const detail = (error.stderr || error.stdout || error.message || "").toString().trim();
+    return { ok: false, output: detail };
+  }
+}
+
+// `setup ai-dev`: first-time install. Seeds the central store from the cloned repo
+// without pulling. Existing central skills are kept.
+function runSetup() {
+  const { sourceDir, templatesDir } = seedCentral({ overwrite: false });
   console.log(`Central skills folder: ${sourceDir}`);
   console.log(`Central templates folder: ${templatesDir}`);
   console.log("Seeded skills and AGENTS.md / CLAUDE.md from the ai-dev repo.");
-  console.log("They are copied into each repo on init/sync.");
+  console.log("Run `init ai-dev` inside a project to install them.");
 }
 
-function runInitOrSync({ force }) {
+// `sync ai-dev`: run from anywhere. Pulls the latest from GitHub into the ai-dev clone,
+// then refreshes the central store from it (skills and templates are overwritten).
+function runSync() {
+  console.log(`Updating ai-dev clone: ${PACKAGE_ROOT}`);
+  const pull = pullPackageRepo();
+  if (pull.ok) {
+    console.log(pull.output || "Already up to date.");
+  } else {
+    console.log(`git pull failed, reseeding from the current clone instead.`);
+    console.log(pull.output);
+  }
+
+  const { sourceDir, templatesDir } = seedCentral({ overwrite: true });
+  console.log("");
+  console.log(`Central skills folder: ${sourceDir}`);
+  console.log(`Central templates folder: ${templatesDir}`);
+  console.log("Central store refreshed. Run `init ai-dev` inside a project to apply it.");
+}
+
+// `init ai-dev`: run in a project. Copies whatever is in the central store into the
+// current project, overwriting so the project always matches central.
+function runInit() {
   const projectDir = process.cwd();
   const { sourceDir, templatesDir } = resolveConfig();
 
   if (!fs.existsSync(sourceDir)) {
-    throw new Error(`Central skills folder not found: ${sourceDir}\nRun \`ai-dev setup\` first.`);
+    throw new Error(
+      `Central skills folder not found: ${sourceDir}\nRun \`setup ai-dev\` or \`sync ai-dev\` first.`
+    );
   }
 
-  const results = syncProject({ projectDir, sourceDir, force });
+  const results = syncProject({ projectDir, sourceDir, force: true });
   console.log(`Source: ${sourceDir}`);
   console.log(summarizeResults(results));
 
-  const rootResults = installRootFiles({ projectDir, templatesDir });
+  const rootResults = installRootFiles({ projectDir, templatesDir, overwrite: true });
   if (rootResults.length > 0) {
     console.log("");
     console.log(`Templates: ${templatesDir}`);
@@ -487,17 +535,17 @@ function parseArgs(argv) {
 }
 
 async function main(argv) {
-  const { command, force } = parseArgs(argv);
+  const { command } = parseArgs(argv);
 
   switch (command) {
     case "setup":
       runSetup();
       break;
     case "init":
-      runInitOrSync({ force: false });
+      runInit();
       break;
     case "sync":
-      runInitOrSync({ force });
+      runSync();
       break;
     case "status":
       runStatus();
@@ -508,12 +556,12 @@ async function main(argv) {
 }
 
 // Verb-first entry point. Commands are invoked as `init ai-dev`, `setup ai-dev`,
-// `sync ai-dev [--force]`, `status ai-dev`. The `ai-dev` namespace token is required
-// so the generic verb names do not act when run by accident or by another tool.
+// `sync ai-dev`, `status ai-dev`. The `ai-dev` namespace token is required so the
+// generic verb names do not act when run by accident or by another tool.
 const VERB_USAGE = {
   setup: "setup ai-dev",
   init: "init ai-dev",
-  sync: "sync ai-dev [--force]",
+  sync: "sync ai-dev",
   status: "status ai-dev",
 };
 
@@ -542,6 +590,8 @@ module.exports = {
   summarizeRootResults,
   seedSkillsFromPackage,
   seedTemplatesFromPackage,
+  seedCentral,
+  pullPackageRepo,
   PACKAGE_ROOT,
   main,
   runVerb,

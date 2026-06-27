@@ -26,31 +26,34 @@ token is required, so the generic verb names do nothing on their own.
 
 ## Quick Start
 
-1. Create the central skills directory and template files:
+The central store (`~/.ai-dev/`) sits between the git repo and your projects:
+
+```text
+GitHub repo --(sync ai-dev)--> ~/.ai-dev/ --(init ai-dev)--> a project
+```
+
+1. First time on a machine, from the ai-dev clone:
 
 ```bash
 setup ai-dev
 ```
 
-2. Add skills under your home directory:
+2. Whenever the repo changes, refresh the central store. Runnable from anywhere:
 
-```text
-~/.ai-dev/skills/
-  my-skill/
-    SKILL.md
+```bash
+sync ai-dev
 ```
 
-3. In any repository, install all skills and root files:
+`sync` pulls the latest from GitHub into the clone, then refreshes `~/.ai-dev/`.
+
+3. In any project, install whatever is in the central store:
 
 ```bash
 init ai-dev
 ```
 
-4. After updating skills or templates centrally, refresh the current repository:
-
-```bash
-sync ai-dev
-```
+`init` copies the central skills and `AGENTS.md` / `CLAUDE.md` into the project,
+overwriting so the project always matches central.
 
 ## Skill Format
 
@@ -71,24 +74,33 @@ Additional files inside a skill directory are copied as-is.
 
 ### `setup ai-dev`
 
-Creates the local configuration and seeds the central store from the cloned repo:
+First-time setup on a machine. Seeds the central store from the cloned repo (no git pull):
 
 ```text
 ~/.ai-dev/config.json
 ~/.ai-dev/skills/      # seeded from the repo's skills/ (existing ones are kept)
 ~/.ai-dev/templates/
-  AGENTS.md            # copied from the repo's AGENTS.md (overwrites a stale scaffold)
+  AGENTS.md            # copied from the repo's AGENTS.md
   CLAUDE.md            # copied from the repo's CLAUDE.md
 ```
 
 The skills and `AGENTS.md` / `CLAUDE.md` committed in the repo are the source of truth.
-On any machine, clone the repo and run `setup ai-dev` to get your real content, not an
-empty scaffold. They are then copied into each repository on `init`/`sync`. See
-[Root Instruction Files](#root-instruction-files).
+Use `sync ai-dev` afterwards to pull updates and refresh the central store.
+
+### `sync ai-dev`
+
+Refreshes the central store from the git repo. Runnable from any directory.
+
+1. `git pull --ff-only` in the ai-dev clone (gets the latest from GitHub).
+2. Re-seeds `~/.ai-dev/skills` and `~/.ai-dev/templates` from the clone, overwriting so
+   the central store always matches the repo.
+
+If the pull fails (offline, detached, etc.), it warns and reseeds from the current clone.
 
 ### `init ai-dev`
 
-Installs all skills from the configured source into the current repository.
+Installs whatever is in the central store into the current project, overwriting so the
+project matches central.
 
 Created targets:
 
@@ -98,55 +110,29 @@ Created targets:
 .cursor/skills/
 .trae/skills/
 .ai-dev/state.json
-AGENTS.md   # from ~/.ai-dev/templates/, only if missing
-CLAUDE.md   # from ~/.ai-dev/templates/, only if missing
+AGENTS.md   # copied from ~/.ai-dev/templates/ (overwritten to match central)
+CLAUDE.md   # copied from ~/.ai-dev/templates/ (overwritten to match central)
 ```
 
 `ai-dev` also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed. The distributed root files (`AGENTS.md`, `CLAUDE.md`) are gitignored too (as `/AGENTS.md`, `/CLAUDE.md`), so they stay local to each repo and are not committed.
-
-### `sync ai-dev`
-
-Synchronizes the current repository with the central skill source.
-
-Default behavior:
-
-- creates missing skills
-- updates unchanged managed skills when the source changed
-- leaves unchanged skills alone
-- skips locally modified managed skills
-
-Force overwrite locally modified managed skills:
-
-```bash
-sync ai-dev --force
-```
 
 ### `status ai-dev`
 
 Prints the configured source, managed tools, and tracked skills for the current repository.
 
-## Safe Sync
+## Project State
 
-`ai-dev` writes a repository-local state file at `.ai-dev/state.json`.
-
-The state file records:
-
-- configured source directory
-- managed tool targets
-- installed skill metadata
-- content hashes for managed files
-
-This allows `sync` to update only skills that are still under tool management and avoid overwriting local edits by default.
+`init` writes a repository-local state file at `.ai-dev/state.json` recording the source
+directory, managed tool targets, and installed skill metadata with content hashes.
 
 ## Root Instruction Files
 
 Alongside skills, `ai-dev` distributes your preferred root instruction files so every
 new repository starts with the conventions you like.
 
-- Source: `~/.ai-dev/templates/` (seeded with `AGENTS.md` and `CLAUDE.md` on `setup`).
-- On `init`/`sync`, every file in that folder is copied to the repository root.
-- Copies are **create-if-missing**: an existing file in the repo is never overwritten,
-  so per-repo edits are safe (even with `--force`, which only affects skills).
+- Source: `~/.ai-dev/templates/` (seeded from the repo on `setup`, refreshed on `sync`).
+- On `init`, every file in that folder is copied to the project root, overwriting so the
+  project matches central. Edit your instructions in the repo, not per-project.
 - The distributed files are gitignored (`/AGENTS.md`, `/CLAUDE.md`) so they stay local
   to each repo, the same way installed skills do.
 
