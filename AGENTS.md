@@ -124,7 +124,11 @@ At the end of every task, report one of:
 
 Once a task is done, two things happen, no exceptions:
 
-1. **Commit and push.** Stage the work, write a clear commit message, push to GitHub. Don't wait to be asked. Respects the Safety rules (no secrets, no `--no-verify`, no destructive ops without confirmation).
+1. **Commit and push to a branch, never to `main`.** If you are on `main`, create a branch first. Stage the work, commit, push the branch, and open or update a pull request for review. Don't wait to be asked. Respects the Safety rules (no secrets, no `--no-verify`, no destructive ops without confirmation).
+   - **Never push to `main` directly.** All work lands through a branch and a reviewable PR.
+   - **Small commits.** One logical change per commit, kept small so they are easy to review.
+   - **Short messages.** A short subject that explains what changed and why. No filler.
+   - **No self-attribution.** Never list yourself as author or co-author. No "Co-Authored-By", no "Generated with" trailer, no AI attribution of any kind. The commit is mine.
 2. **Report what to restart.** Tell me exactly which service / system / program needs to be restarted for the change to take effect, with the full list of commands to run. If nothing needs restarting, say so explicitly.
 
 For restart commands that need `sudo`: never run them yourself. List them for me to run, clearly marked as mine to execute.
