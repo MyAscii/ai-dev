@@ -11,15 +11,23 @@ It keeps one canonical skills directory on your machine and mirrors those skills
 ## Install
 
 ```bash
-npm install -g .
+npm link
 ```
+
+This registers four global commands: `setup`, `init`, `sync`, and `status`. Each is
+verb-first and takes `ai-dev` as its argument (for example `init ai-dev`). The `ai-dev`
+token is required, so the generic verb names do nothing on their own.
+
+> Note: the verb names are generic. In shells that ship their own `sync` (for example
+> Git Bash, where `/usr/bin/sync` wins on `PATH`), call it explicitly or use PowerShell,
+> where `sync ai-dev` resolves to this CLI.
 
 ## Quick Start
 
 1. Create the central skills directory:
 
 ```bash
-ai-dev setup
+setup ai-dev
 ```
 
 2. Add skills under your home directory:
@@ -33,13 +41,13 @@ ai-dev setup
 3. In any repository, install all skills:
 
 ```bash
-ai-dev init
+init ai-dev
 ```
 
 4. After updating skills centrally, refresh the current repository:
 
 ```bash
-ai-dev sync
+sync ai-dev
 ```
 
 ## Skill Format
@@ -59,7 +67,7 @@ Additional files inside a skill directory are copied as-is.
 
 ## Commands
 
-### `ai-dev setup`
+### `setup ai-dev`
 
 Creates the default local configuration, central skill source, and template root files:
 
@@ -74,7 +82,7 @@ Creates the default local configuration, central skill source, and template root
 Edit the files under `~/.ai-dev/templates/` once; they are copied into the root of
 every repository on `init`/`sync`. See [Root Instruction Files](#root-instruction-files).
 
-### `ai-dev init`
+### `init ai-dev`
 
 Installs all skills from the configured source into the current repository.
 
@@ -90,9 +98,9 @@ AGENTS.md   # from ~/.ai-dev/templates/, only if missing
 CLAUDE.md   # from ~/.ai-dev/templates/, only if missing
 ```
 
-The CLI also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed. Root instruction files (`AGENTS.md`, `CLAUDE.md`) are **not** gitignored — they are meant to be committed and shared.
+The CLI also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed. The distributed root files (`AGENTS.md`, `CLAUDE.md`) are gitignored too (as `/AGENTS.md`, `/CLAUDE.md`), so they stay local to each repo and are not committed.
 
-### `ai-dev sync`
+### `sync ai-dev`
 
 Synchronizes the current repository with the central skill source.
 
@@ -106,10 +114,10 @@ Default behavior:
 Force overwrite locally modified managed skills:
 
 ```bash
-ai-dev sync --force
+sync ai-dev --force
 ```
 
-### `ai-dev status`
+### `status ai-dev`
 
 Prints the configured source, managed tools, and tracked skills for the current repository.
 
@@ -135,7 +143,8 @@ new repository starts with the conventions you like.
 - On `init`/`sync`, every file in that folder is copied to the repository root.
 - Copies are **create-if-missing**: an existing file in the repo is never overwritten,
   so per-repo edits are safe (even with `--force`, which only affects skills).
-- These files are **not** gitignored — commit them so your team shares them.
+- The distributed files are gitignored (`/AGENTS.md`, `/CLAUDE.md`) so they stay local
+  to each repo, the same way installed skills do.
 
 `AGENTS.md` is the single source of truth. Codex, Cursor, and Trae read it natively;
 Claude Code reads it through the `@AGENTS.md` import on the first line of `CLAUDE.md`.

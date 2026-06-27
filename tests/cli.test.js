@@ -3,16 +3,31 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const { execFileSync } = require("node:child_process");
 
 const {
   syncProject,
   summarizeResults,
   installRootFiles,
   summarizeRootResults,
+  runVerb,
 } = require("../src/cli");
 
 function makeTempDir(name) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
+}
+
+function runBin(name, args, cwd) {
+  try {
+    const stdout = execFileSync(
+      process.execPath,
+      [path.join(__dirname, "..", "bin", `${name}.js`), ...args],
+      { cwd, encoding: "utf8" }
+    );
+    return { code: 0, output: stdout };
+  } catch (error) {
+    return { code: error.status, output: `${error.stdout || ""}${error.stderr || ""}` };
+  }
 }
 
 function writeFile(filePath, content) {
@@ -188,6 +203,28 @@ test("summarizeRootResults reports created and kept counts", () => {
 
   assert.match(output, /created: 1, kept: 1/);
   assert.match(output, /- created AGENTS\.md/);
+});
+
+test("runVerb requires the ai-dev namespace token", async () => {
+  await assert.rejects(() => runVerb("init", []), /Usage: init ai-dev/);
+  await assert.rejects(() => runVerb("sync", ["nope"]), /Usage: sync ai-dev \[--force\]/);
+});
+
+test("runVerb rejects an unknown verb", async () => {
+  await assert.rejects(() => runVerb("bogus", ["ai-dev"]), /Unknown command: bogus/);
+});
+
+test("verb bin without the ai-dev token prints usage and exits 1", () => {
+  const result = runBin("init", [], os.tmpdir());
+  assert.equal(result.code, 1);
+  assert.match(result.output, /Usage: init ai-dev/);
+});
+
+test("status ai-dev runs end to end via the bin", () => {
+  const projectDir = makeTempDir("ai-dev-project");
+  const result = runBin("status", ["ai-dev"], projectDir);
+  assert.equal(result.code, 0);
+  assert.match(result.output, /No ai-dev state found/);
 });
 
 test("summarizeResults reports skipped local changes", () => {

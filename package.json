@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "description": "Tiny CLI for installing and syncing local AI coding skills into project-local tool folders.",
   "bin": {
-    "ai-dev": "./bin/ai-dev.js"
+    "setup": "./bin/setup.js",
+    "init": "./bin/init.js",
+    "sync": "./bin/sync.js",
+    "status": "./bin/status.js"
   },
   "type": "commonjs",
   "scripts": {

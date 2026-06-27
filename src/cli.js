@@ -479,6 +479,26 @@ async function main(argv) {
   }
 }
 
+// Verb-first entry point. Commands are invoked as `init ai-dev`, `setup ai-dev`,
+// `sync ai-dev [--force]`, `status ai-dev`. The `ai-dev` namespace token is required
+// so the generic verb names do not act when run by accident or by another tool.
+const VERB_USAGE = {
+  setup: "setup ai-dev",
+  init: "init ai-dev",
+  sync: "sync ai-dev [--force]",
+  status: "status ai-dev",
+};
+
+async function runVerb(command, argv) {
+  if (!Object.prototype.hasOwnProperty.call(VERB_USAGE, command)) {
+    throw new Error(`Unknown command: ${command}`);
+  }
+  if (argv[0] !== "ai-dev") {
+    throw new Error(`Usage: ${VERB_USAGE[command]}`);
+  }
+  return main([command, ...argv.slice(1)]);
+}
+
 module.exports = {
   TOOL_DIRS,
   STATE_RELATIVE_PATH,
@@ -494,4 +514,6 @@ module.exports = {
   summarizeRootResults,
   seedDefaultTemplates,
   main,
+  runVerb,
+  VERB_USAGE,
 };
