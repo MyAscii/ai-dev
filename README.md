@@ -71,18 +71,20 @@ Additional files inside a skill directory are copied as-is.
 
 ### `setup ai-dev`
 
-Creates the default local configuration, central skill source, and template root files:
+Creates the local configuration and seeds the central store from the cloned repo:
 
 ```text
 ~/.ai-dev/config.json
-~/.ai-dev/skills/
+~/.ai-dev/skills/      # seeded from the repo's skills/ (existing ones are kept)
 ~/.ai-dev/templates/
-  AGENTS.md
-  CLAUDE.md
+  AGENTS.md            # copied from the repo's AGENTS.md (overwrites a stale scaffold)
+  CLAUDE.md            # copied from the repo's CLAUDE.md
 ```
 
-Edit the files under `~/.ai-dev/templates/` once; they are copied into the root of
-every repository on `init`/`sync`. See [Root Instruction Files](#root-instruction-files).
+The skills and `AGENTS.md` / `CLAUDE.md` committed in the repo are the source of truth.
+On any machine, clone the repo and run `setup ai-dev` to get your real content, not an
+empty scaffold. They are then copied into each repository on `init`/`sync`. See
+[Root Instruction Files](#root-instruction-files).
 
 ### `init ai-dev`
 

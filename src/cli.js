@@ -386,13 +386,40 @@ function summarizeRootResults(results) {
   return lines.join("\n");
 }
 
-function seedDefaultTemplates(templatesDir) {
+// The kit's own bundled content (this cloned repo). `setup` seeds the central store
+// from here so a fresh machine gets the real skills and AGENTS.md / CLAUDE.md that are
+// committed in the repo, not empty scaffolds.
+const PACKAGE_ROOT = path.join(__dirname, "..");
+
+function seedTemplatesFromPackage(templatesDir, packageRoot = PACKAGE_ROOT) {
   ensureDir(templatesDir);
-  for (const [name, content] of Object.entries(DEFAULT_TEMPLATE_FILES)) {
-    const filePath = path.join(templatesDir, name);
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, content, "utf8");
+  for (const [name, fallback] of Object.entries(DEFAULT_TEMPLATE_FILES)) {
+    const source = path.join(packageRoot, name);
+    const dest = path.join(templatesDir, name);
+    if (fs.existsSync(source)) {
+      // The repo's committed AGENTS.md / CLAUDE.md are the canonical templates.
+      // Overwrite so a stale scaffold from an earlier install is replaced.
+      fs.copyFileSync(source, dest);
+    } else if (!fs.existsSync(dest)) {
+      // Fallback only if the repo somehow lacks the file.
+      fs.writeFileSync(dest, fallback, "utf8");
     }
+  }
+}
+
+function seedSkillsFromPackage(sourceDir, packageRoot = PACKAGE_ROOT) {
+  ensureDir(sourceDir);
+  const bundledSkillsDir = path.join(packageRoot, "skills");
+  if (!fs.existsSync(bundledSkillsDir)) {
+    return;
+  }
+  for (const skillName of listSkillDirs(bundledSkillsDir)) {
+    const dest = path.join(sourceDir, skillName);
+    if (fs.existsSync(dest)) {
+      continue; // keep skills already in the central store
+    }
+    const snapshot = readSkillSnapshot(path.join(bundledSkillsDir, skillName));
+    copySkillFiles(dest, snapshot);
   }
 }
 
@@ -400,17 +427,18 @@ function runSetup() {
   const configPath = getDefaultConfigPath();
   const sourceDir = getDefaultSourceDir();
   const templatesDir = getDefaultTemplatesDir();
-  ensureDir(sourceDir);
-  seedDefaultTemplates(templatesDir);
+
+  seedSkillsFromPackage(sourceDir);
+  seedTemplatesFromPackage(templatesDir);
 
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, { sourceDir });
   }
 
   console.log(`Central skills folder: ${sourceDir}`);
-  console.log("Add your skill folders there. Each skill must contain `SKILL.md`.");
   console.log(`Central templates folder: ${templatesDir}`);
-  console.log("Edit AGENTS.md / CLAUDE.md there; they are copied into each repo on init/sync.");
+  console.log("Seeded skills and AGENTS.md / CLAUDE.md from the ai-dev repo.");
+  console.log("They are copied into each repo on init/sync.");
 }
 
 function runInitOrSync({ force }) {
@@ -512,7 +540,9 @@ module.exports = {
   installRootFiles,
   summarizeResults,
   summarizeRootResults,
-  seedDefaultTemplates,
+  seedSkillsFromPackage,
+  seedTemplatesFromPackage,
+  PACKAGE_ROOT,
   main,
   runVerb,
   VERB_USAGE,
