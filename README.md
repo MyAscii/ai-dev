@@ -1,8 +1,8 @@
 # ai-dev
 
-`ai-dev` is a small Node.js CLI for installing and syncing local AI skills into project-local folders for Claude Code, Codex, Cursor, and Trae. It is a simpler, lighter implementation of the `rulesync` idea, focused on skills plus shared root instruction files.
+`ai-dev` is a small Node.js CLI for installing and syncing local AI skills into `.agents/skills` with a Claude Code link. It is a simpler, lighter implementation of the `rulesync` idea, focused on skills plus shared root instruction files.
 
-It keeps one canonical skills directory on your machine and mirrors those skills, along with your preferred `AGENTS.md` / `CLAUDE.md`, into each repository.
+It keeps one central skills directory on your machine and installs one copy in each repository at `.agents/skills`. Claude Code's skills folder links to that shared directory. Your preferred `AGENTS.md` / `CLAUDE.md` are copied alongside it.
 
 ## Requirements
 
@@ -105,16 +105,33 @@ project matches central.
 Created targets:
 
 ```text
-.claude/skills/
-.codex/skills/
-.cursor/skills/
-.trae/skills/
+.agents/skills/        # the only project copy of the skills
+.claude/skills -> ../.agents/skills
 .ai-dev/state.json
 AGENTS.md   # copied from ~/.ai-dev/templates/ (overwritten to match central)
 CLAUDE.md   # copied from ~/.ai-dev/templates/ (overwritten to match central)
 ```
 
-`ai-dev` also adds matching entries to the repository `.gitignore` so installed skills stay local and do not get committed or pushed. The distributed root files (`AGENTS.md`, `CLAUDE.md`) are gitignored too (as `/AGENTS.md`, `/CLAUDE.md`), so they stay local to each repo and are not committed.
+`ai-dev` also adds matching entries to the repository `.gitignore` so installed skills and links stay local and do not get committed or pushed. Link entries have no trailing slash because Git's directory-only patterns do not match symbolic links. The distributed root files (`AGENTS.md`, `CLAUDE.md`) are gitignored too (as `/AGENTS.md`, `/CLAUDE.md`), so they stay local to each repo and are not committed.
+
+On macOS/Linux these are relative directory symlinks, following the shared-directory
+pattern used by [t3code](https://github.com/pingdotgg/t3code/blob/main/.claude/skills).
+On Windows they are directory junctions, which do not require Developer Mode or admin
+rights. Windows junctions use absolute targets; rerun `init ai-dev` after moving a project,
+moving the stale links aside first if the command reports that they point elsewhere.
+Link creation must be allowed by the filesystem and execution environment.
+
+When upgrading an existing project, `init` moves the old Claude skills folder to
+`skills.ai-dev-backup` beside the new link. If that name exists, it uses a numbered
+suffix. Backup paths are printed and gitignored. Local-only skills and edits remain
+in those backups; copy anything you want active into `.agents/skills`. Existing
+project-only skills in `.agents/skills` are kept. Central skills overwrite matching
+names on `init`, including local edits. Repeated installs reuse the existing Claude link.
+Old `.codex/skills`, `.cursor/skills`, and `.trae/skills` links pointing to this
+project's `.agents/skills` are removed. Real directories, links pointing elsewhere,
+and other tool configuration files are kept. No new folders for those tools are created.
+Links pointing elsewhere and linked parent folders are rejected before installation
+to avoid modifying skills outside this project.
 
 ### `status ai-dev`
 
@@ -123,7 +140,9 @@ Prints the configured source, managed tools, and tracked skills for the current 
 ## Project State
 
 `init` writes a repository-local state file at `.ai-dev/state.json` recording the source
-directory, managed tool targets, and installed skill metadata with content hashes.
+directory, canonical project directory, managed tool targets, and installed skill
+metadata with content hashes. `status ai-dev` prints the canonical directory for
+projects installed with the shared layout.
 
 ## Root Instruction Files
 
@@ -142,7 +161,14 @@ Edit the templates once centrally and every repo inherits them.
 
 ## Tool Targets
 
-- Claude Code: `.claude/skills`
-- Codex: `.codex/skills`
-- Cursor: `.cursor/skills`
-- Trae: `.trae/skills`
+- Shared project skills: `.agents/skills`
+- Claude Code: `.claude/skills` links to `.agents/skills`
+
+## Validation
+
+Run `npm test` for local gate tests covering installation, migration, shared links,
+and preservation of existing files. Tests use temporary projects and require
+permission to create symlinks/junctions.
+Contributors enable the gate on each commit with `git config core.hooksPath .githooks`.
+The CLI is loaded on every invocation, so it needs no restart. Reopen an agent
+session after installing if it has already cached the skill list.
