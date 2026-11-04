@@ -1,11 +1,11 @@
 # Shared skill layout evaluation
 
-Outcome: one physical project skill tree serves all four tool paths. A central
-update reaches every tool, and migration preserves all prior tool directory data.
+Outcome: one physical project skill tree lives in `.agents/skills`, with only a Claude link. A central
+update reaches Claude, and migration preserves all prior tool directory data.
 
 ## Deterministic evaluation
 
-Run `npm run eval` before shipping. Pass threshold: all six scenarios pass.
+Run `npm run eval` before shipping. Pass threshold: all seven scenarios pass.
 The runner uses real bundled skills, CLI processes, Windows junctions or Unix
 symlinks, a repository with spaces in its path, and real `git check-ignore`.
 It prints each result, a JSON score, and the temporary evidence directory.

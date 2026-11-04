@@ -1,8 +1,8 @@
 # ai-dev
 
-`ai-dev` is a small Node.js CLI for installing and syncing local AI skills into project-local folders for Claude Code, Codex, Cursor, and Trae. It is a simpler, lighter implementation of the `rulesync` idea, focused on skills plus shared root instruction files.
+`ai-dev` is a small Node.js CLI for installing and syncing local AI skills into `.agents/skills` with a Claude Code link. It is a simpler, lighter implementation of the `rulesync` idea, focused on skills plus shared root instruction files.
 
-It keeps one central skills directory on your machine and installs one copy in each repository at `.agents/skills`. Each tool's skills folder links to that shared directory. Your preferred `AGENTS.md` / `CLAUDE.md` are copied alongside it.
+It keeps one central skills directory on your machine and installs one copy in each repository at `.agents/skills`. Claude Code's skills folder links to that shared directory. Your preferred `AGENTS.md` / `CLAUDE.md` are copied alongside it.
 
 ## Requirements
 
@@ -107,9 +107,6 @@ Created targets:
 ```text
 .agents/skills/        # the only project copy of the skills
 .claude/skills -> ../.agents/skills
-.codex/skills  -> ../.agents/skills
-.cursor/skills -> ../.agents/skills
-.trae/skills   -> ../.agents/skills
 .ai-dev/state.json
 AGENTS.md   # copied from ~/.ai-dev/templates/ (overwritten to match central)
 CLAUDE.md   # copied from ~/.ai-dev/templates/ (overwritten to match central)
@@ -124,12 +121,15 @@ rights. Windows junctions use absolute targets; rerun `init ai-dev` after moving
 moving the stale links aside first if the command reports that they point elsewhere.
 Link creation must be allowed by the filesystem and execution environment.
 
-When upgrading an existing project, `init` moves each old tool skills folder to
+When upgrading an existing project, `init` moves the old Claude skills folder to
 `skills.ai-dev-backup` beside the new link. If that name exists, it uses a numbered
 suffix. Backup paths are printed and gitignored. Local-only skills and edits remain
 in those backups; copy anything you want active into `.agents/skills`. Existing
 project-only skills in `.agents/skills` are kept. Central skills overwrite matching
-names on `init`, including local edits. Repeated installs reuse existing links.
+names on `init`, including local edits. Repeated installs reuse the existing Claude link.
+Old `.codex/skills`, `.cursor/skills`, and `.trae/skills` links pointing to this
+project's `.agents/skills` are removed. Real directories, links pointing elsewhere,
+and other tool configuration files are kept. No new folders for those tools are created.
 Links pointing elsewhere and linked parent folders are rejected before installation
 to avoid modifying skills outside this project.
 
@@ -163,9 +163,6 @@ Edit the templates once centrally and every repo inherits them.
 
 - Shared project skills: `.agents/skills`
 - Claude Code: `.claude/skills` links to `.agents/skills`
-- Codex: `.agents/skills`, with `.codex/skills` retained as a compatibility link
-- Cursor: `.cursor/skills` links to `.agents/skills`
-- Trae: `.trae/skills` links to `.agents/skills`
 
 ## Validation
 
