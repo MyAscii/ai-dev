@@ -32,6 +32,17 @@ check("fresh CLI init installs bundled scripts and one shared tree", () => {
   }
 });
 check("repeat CLI init is idempotent", () => assert.match(run("init"), /created: 0/));
+check("only agents and Claude skills paths are created; retired aliases are removed", () => {
+  for (const tool of ["codex", "cursor", "trae"]) {
+    const parent = path.join(project, `.${tool}`);
+    assert.equal(fs.existsSync(parent), false);
+    fs.mkdirSync(parent);
+    fs.symlinkSync(path.join(project, ".agents", "skills"), path.join(parent, "skills"), process.platform === "win32" ? "junction" : "dir");
+  }
+  run("init");
+  for (const tool of ["codex", "cursor", "trae"]) assert.equal(fs.existsSync(path.join(project, `.${tool}`, "skills")), false);
+  assert.ok(fs.existsSync(path.join(project, ".agents", "skills", "tdd", "SKILL.md")));
+});
 check("central update reaches all tools", () => {
   fs.appendFileSync(path.join(source, "tdd", "SKILL.md"), "\nEvaluation update\n");
   run("init");
@@ -55,4 +66,4 @@ check("legacy directories migrate with local content preserved", () => {
   assert.match(output, /Archived previous skills/);
   for (const dir of Object.values(TOOL_DIRS)) assert.equal(fs.readFileSync(path.join(legacy, `${dir}.ai-dev-backup`, "local.txt"), "utf8"), "local");
 });
-console.log(JSON.stringify({ passed: checks.length, total: 6, threshold: 1, artifacts: root }));
+console.log(JSON.stringify({ passed: checks.length, total: 7, threshold: 1, artifacts: root }));

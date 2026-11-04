@@ -9,9 +9,6 @@ const STATE_RELATIVE_PATH = path.join(".ai-dev", "state.json");
 const SKILLS_RELATIVE_PATH = path.join(".agents", "skills");
 const TOOL_DIRS = {
   claudecode: path.join(".claude", "skills"),
-  codex: path.join(".codex", "skills"),
-  trae: path.join(".trae", "skills"),
-  cursor: path.join(".cursor", "skills"),
 };
 const REPO_GITIGNORE_ENTRIES = [
   ".ai-dev/",
@@ -81,6 +78,21 @@ function linkToolSkills(projectDir) {
       throw new Error(`Could not link ${target} to ${canonical}: ${error.message}`);
     }
     if (backup) console.log(`Archived previous skills: ${backup}`);
+  }
+}
+
+function removeRetiredSkillLinks(projectDir) {
+  const canonical = path.join(projectDir, SKILLS_RELATIVE_PATH);
+  for (const tool of ["codex", "cursor", "trae"]) {
+    const parent = path.join(projectDir, `.${tool}`);
+    const parentStat = lstatIfExists(parent);
+    if (!parentStat?.isDirectory() || parentStat.isSymbolicLink()) continue;
+    const target = path.join(parent, "skills");
+    if (!lstatIfExists(target)?.isSymbolicLink()) continue;
+    if (path.resolve(parent, fs.readlinkSync(target)) !== canonical) continue;
+    // Unlink only the retired alias, never its target or a real skill directory.
+    fs.unlinkSync(target);
+    console.log(`Removed retired skills link: ${target}`);
   }
 }
 
@@ -395,6 +407,7 @@ function syncProject({ projectDir, sourceDir, force }) {
   }
 
   linkToolSkills(projectDir);
+  removeRetiredSkillLinks(projectDir);
   writeState(projectDir, nextState);
   return results;
 }
