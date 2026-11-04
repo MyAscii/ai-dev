@@ -179,4 +179,4 @@ STOP. Name the ambiguity in one sentence. Present 2-3 options with real trade-of
 - If something is broken, say so plainly.
 - End responses with the next action, not a recap of what was just done.
 
-When I ask for something, the answer is the finished product, not a plan. Tests included. Evals included. Docs included.
+When I ask for something, the answer is the finished product, not a plan. Tests included. Docs included.
