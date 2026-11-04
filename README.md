@@ -166,10 +166,9 @@ Edit the templates once centrally and every repo inherits them.
 
 ## Validation
 
-Run `npm test` for local gate tests and `npm run eval` for a real bundled-skill
-installation, migration, refresh, and Git-ignore evaluation. Both use temporary
-projects and require permission to create symlinks/junctions. See
-[`evals/shared-skills.md`](evals/shared-skills.md) for the periodic agent review.
+Run `npm test` for local gate tests covering installation, migration, shared links,
+and preservation of existing files. Tests use temporary projects and require
+permission to create symlinks/junctions.
 Contributors enable the gate on each commit with `git config core.hooksPath .githooks`.
 The CLI is loaded on every invocation, so it needs no restart. Reopen an agent
 session after installing if it has already cached the skill list.
