@@ -24,7 +24,7 @@ Every piece of work you do belongs to one of two spaces. Picking the wrong one i
 
 **The meta-loop that makes this work:** the LLM writes the deterministic script, then the script constrains the LLM forever after. The model's intelligence creates the constraint that prevents the model from being stupid. A bug in latent space becomes a feature in deterministic space, and the old failure path becomes structurally unreachable.
 
-Every feature, every fix, every investigation starts with: is this latent or deterministic? If the answer is "both," split it. The deterministic piece becomes a script + tests. The latent piece becomes a prompt + eval.
+Every feature, every fix, every investigation starts with: is this latent or deterministic? If the answer is "both," split it. The deterministic piece becomes a script + tests. The latent piece becomes a prompt with explicit success criteria.
 
 ## The context window is the lever
 
@@ -32,15 +32,14 @@ The context window is your only control surface over the model. Treat it as a de
 
 ## Non-negotiable rules
 
-### Tests and evals: every time, no exceptions
+### Tests: every time, no exceptions
 
-- Every feature ships with a test suite AND an eval suite, in the same commit. Not the next PR.
-- Every bug fix ships with a test AND an eval that would have caught the bug. The regression test is the proof the bug is fixed. The eval is the proof the fix generalizes.
+- Every feature ships with appropriate tests in the same commit. Not the next PR.
+- Every bug fix ships with a regression test that would have caught the bug.
 - Every failure gets skillified (the 10 steps). Same day. Same session when possible.
-- "I'll add tests later" is banned. If the tests/evals aren't in the diff, the work isn't done.
-- Two test lanes, different budgets:
-  - **Gate tests**: deterministic, local, free, <2s. Run on every commit via pre-commit hook. Never flaky.
-  - **Periodic evals**: paid (LLM calls), slower, quality-measuring. Run before ship and nightly. Allowed to be non-deterministic but must have a pass threshold.
+- "I'll add tests later" is banned. If required tests aren't in the diff, the work isn't done.
+- **Gate tests**: deterministic, local, free, <2s. Run on every commit via pre-commit hook. Never flaky.
+- Create or run evals only when I explicitly request them. This applies to features, bug fixes, investigations, services, and skillify workflows. Do not add eval suites, harnesses, judge prompts, or schedules by default.
 
 ### Tie every change to a measurable outcome
 
@@ -51,7 +50,7 @@ The context window is your only control surface over the model. Treat it as a de
 ### LLM access: local Claude Code, not the API
 
 - When the software we build needs to call an LLM, do NOT use an LLM API (Anthropic API, OpenAI API, any hosted inference endpoint) unless I explicitly instruct it. Route the call through the local Claude Code instead.
-- If no LLM service exists yet in the project, build one. Create a self-contained LLM service (under `services/llm/` per the architecture rules) that shells out to local Claude Code, with its own contract, tests, and evals. Every other service calls that contract, never an external API.
+- If no LLM service exists yet in the project, build one. Create a self-contained LLM service (under `services/llm/` per the architecture rules) that shells out to local Claude Code, with its own contract and tests. Every other service calls that contract, never an external API.
 - Always use the best available model by default unless I explicitly instruct otherwise. No silent downgrades to a cheaper or smaller model for cost.
 
 ### Tech choice: vanilla by default
@@ -79,7 +78,7 @@ When a task matches a specialized domain (SEO, schema, security audit, design re
 
 Failures get skillified, that rule already stands. So does repeated success. The second time you run the same manual flow by hand, stop and codify it: a script, a skill, or a workflow. One-off prompts don't compound; reusable flows do. The leverage is in the work you stop having to think about, not in re-prompting from scratch each time. Done it twice by hand? The third time is a command.
 
-**The core principle.** Write a test for every bug and run the tests forever, so the bug becomes structurally impossible to repeat. Skillify applies that to agents: every failure (and every repeated success) becomes a skill with tests and an eval, and the old failure path becomes structurally unreachable. This is the meta-loop from "The two machine spaces" made into a procedure.
+**The core principle.** Write a test for every bug and run the tests forever, so the bug becomes structurally impossible to repeat. Skillify applies that to agents: every failure (and every repeated success) becomes a skill with tests, and the old failure path becomes structurally unreachable. This is the meta-loop from "The two machine spaces" made into a procedure.
 
 **The 10 steps.** Every skillify runs this checklist. A step that genuinely doesn't apply gets named and skipped, never silently dropped. "Skillify checklist green" in a DONE report means all ten are accounted for.
 
@@ -87,9 +86,9 @@ Failures get skillified, that rule already stands. So does repeated success. The
 2. **Deterministic code.** Move everything code can do out of latent space into `scripts/`. The LLM never does what a script can.
 3. **Gate tests.** Unit tests for the small, fatal bugs: parsing, formatting, edge cases. Local, free, under 2s.
 4. **Integration tests.** Run against live endpoints and real data, not mocks.
-5. **Periodic evals.** LLM-as-judge for quality and correctness, with a pass threshold. Check the process the agent uses, not just the output.
+5. **Periodic evals (only when explicitly requested).** Otherwise mark this step skipped. When requested, use a pass threshold and check the process as well as the output.
 6. **Resolver trigger.** Wire the skill into routing by adding its trigger to AGENTS.md so it actually fires.
-7. **Resolver eval.** Prove the trigger routes to this skill and not another.
+7. **Resolver test.** Use deterministic routing checks where available. Create a resolver eval only when explicitly requested.
 8. **Check-resolvable and DRY audit.** Scan for skills that can never fire and for overlapping domains. Collapse duplicates.
 9. **E2E smoke test.** One end-to-end run on a real case before it ships.
 10. **Filing rules.** Decide where the skill lives and persists so it is found next time.
@@ -98,9 +97,9 @@ Failures get skillified, that rule already stands. So does repeated success. The
 
 Build everything as independent services / self-contained directories. The goal: any single piece of the application can be worked on by a separate Claude Code session without stepping on another session's work.
 
-- **One concern, one directory.** Each service lives under `services/<service-name>/` (or equivalent top-level directory) with its own code, tests, evals, README, and config. No shared mutable state across services beyond well-defined contracts.
+- **One concern, one directory.** Each service lives under `services/<service-name>/` (or equivalent top-level directory) with its own code, tests, README, and config. No shared mutable state across services beyond well-defined contracts.
 - **Contracts at the boundary.** Services communicate via typed interfaces (HTTP, gRPC, message bus, or a shared schema package). Define the contract in a `contracts/` or `schemas/` directory that both sides import, never reach into another service's internals.
-- **Independent test + eval suites.** Each service has its own gate tests and periodic evals. A change in one service must not require running another service's full suite to validate.
+- **Independent test suites.** Each service has its own gate tests. A change in one service must not require running another service's full suite to validate.
 - **Independent deploy unit.** Each service builds and ships on its own. No monolithic release that forces every service to move in lockstep.
 - **Parallel-session safe.** Two Claude sessions working in `services/foo/` and `services/bar/` should never collide. If a change requires coordinated edits across services, that's a contract change: bump the schema version, update both sides, and call it out explicitly.
 - **Top-level only holds glue.** Root directory: orchestration scripts, shared config, contracts, docs. No business logic.
@@ -113,7 +112,7 @@ When in doubt, lean toward more services with sharper boundaries rather than few
 
 At the end of every task, report one of:
 
-- **DONE**: All steps completed. Evidence provided for every claim. Tests + evals in the diff. Skillify checklist green if a failure was promoted. Ready to merge.
+- **DONE**: All steps completed. Evidence provided for every claim. Required tests in the diff. Evals only if explicitly requested. Skillify checklist green if a failure was promoted. Ready to merge.
 - **DONE_WITH_CONCERNS**: Completed, but with issues I should know about. List each concern with severity and a proposed follow-up.
 - **BLOCKED**: Cannot proceed. State what's blocking and what was already tried.
 - **NEEDS_CONTEXT**: Missing information required to continue. State exactly what's needed.
