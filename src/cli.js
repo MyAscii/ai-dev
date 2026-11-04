@@ -6,6 +6,7 @@ const { execFileSync } = require("node:child_process");
 
 const VERSION = "0.1.0";
 const STATE_RELATIVE_PATH = path.join(".ai-dev", "state.json");
+const SKILLS_RELATIVE_PATH = path.join(".agents", "skills");
 const TOOL_DIRS = {
   claudecode: path.join(".claude", "skills"),
   codex: path.join(".codex", "skills"),
@@ -14,8 +15,74 @@ const TOOL_DIRS = {
 };
 const REPO_GITIGNORE_ENTRIES = [
   ".ai-dev/",
-  ...Object.values(TOOL_DIRS).map((toolDir) => `${toolDir.split(path.sep).join("/")}/`),
+  ".agents/skills/",
+  // Directory-only patterns do not ignore symbolic links.
+  ...Object.values(TOOL_DIRS).map((toolDir) => `/${toolDir.split(path.sep).join("/")}`),
 ];
+
+function lstatIfExists(target) {
+  try {
+    return fs.lstatSync(target);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function validateSkillPaths(projectDir) {
+  const canonical = path.join(projectDir, SKILLS_RELATIVE_PATH);
+  for (const relative of [".agents", ...Object.values(TOOL_DIRS).map(path.dirname)]) {
+    const target = path.join(projectDir, relative);
+    const stat = lstatIfExists(target);
+    if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
+      throw new Error(`Expected a real directory: ${target}`);
+    }
+  }
+  const stat = lstatIfExists(canonical);
+  if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
+    throw new Error(`Expected a real skills directory: ${canonical}`);
+  }
+  for (const relative of Object.values(TOOL_DIRS)) {
+    const target = path.join(projectDir, relative);
+    if (lstatIfExists(target)?.isSymbolicLink()) {
+      const linked = path.resolve(path.dirname(target), fs.readlinkSync(target));
+      if (linked !== canonical) {
+        throw new Error(`Skill link points elsewhere: ${target}. Move it aside before running init.`);
+      }
+    }
+  }
+}
+
+function linkToolSkills(projectDir) {
+  const canonical = path.join(projectDir, SKILLS_RELATIVE_PATH);
+  for (const relative of Object.values(TOOL_DIRS)) {
+    const target = path.join(projectDir, relative);
+    const stat = lstatIfExists(target);
+    if (stat?.isSymbolicLink()) continue;
+    ensureDir(path.dirname(target));
+    let backup;
+    if (stat) {
+      backup = `${target}.ai-dev-backup`;
+      for (let index = 1; lstatIfExists(backup); index += 1) {
+        backup = `${target}.ai-dev-backup-${index}`;
+      }
+      fs.renameSync(target, backup);
+      ensureRepoGitignore(projectDir, [`/${path.relative(projectDir, backup).split(path.sep).join("/")}`]);
+    }
+    try {
+      // Junctions work on Windows without Developer Mode or administrator rights.
+      fs.symlinkSync(
+        process.platform === "win32" ? canonical : path.relative(path.dirname(target), canonical),
+        target,
+        process.platform === "win32" ? "junction" : "dir"
+      );
+    } catch (error) {
+      if (backup) fs.renameSync(backup, target);
+      throw new Error(`Could not link ${target} to ${canonical}: ${error.message}`);
+    }
+    if (backup) console.log(`Archived previous skills: ${backup}`);
+  }
+}
 
 const DEFAULT_AGENTS_MD = `# AGENTS.md
 
@@ -236,24 +303,28 @@ function isManagedUnchanged(destinationDir, previousFiles) {
   return true;
 }
 
-function installSkillForTool({
+function installCanonicalSkill({
   projectDir,
-  toolName,
   skillName,
   snapshot,
   state,
   force,
 }) {
-  const toolRoot = path.join(projectDir, TOOL_DIRS[toolName]);
+  const toolRoot = path.join(projectDir, SKILLS_RELATIVE_PATH);
   const destinationDir = path.join(toolRoot, skillName);
-  const previousToolState = state.skills?.[skillName]?.tools?.[toolName];
+  if (lstatIfExists(destinationDir)?.isSymbolicLink()) {
+    throw new Error(`Expected a real skill directory: ${destinationDir}`);
+  }
+  const previousToolState = state.skills?.[skillName]?.canonical;
 
   if (!fs.existsSync(destinationDir)) {
     copySkillFiles(destinationDir, snapshot);
     return { status: "created", hash: snapshot.hash, files: snapshot.files };
   }
 
-  if (previousToolState && previousToolState.hash === snapshot.hash) {
+  if (previousToolState && previousToolState.hash === snapshot.hash &&
+      isManagedUnchanged(destinationDir, snapshot.files) &&
+      walkFiles(destinationDir).length === Object.keys(snapshot.files).length) {
     return { status: "unchanged", hash: snapshot.hash, files: snapshot.files };
   }
 
@@ -272,7 +343,23 @@ function installSkillForTool({
 }
 
 function syncProject({ projectDir, sourceDir, force }) {
+  projectDir = path.resolve(projectDir);
+  sourceDir = path.resolve(sourceDir);
+  validateSkillPaths(projectDir);
   const skillNames = listSkillDirs(sourceDir);
+  // Validate every source before modifying the project.
+  const snapshots = new Map(skillNames.map((name) => [name, readSkillSnapshot(path.join(sourceDir, name))]));
+  const canonical = path.join(projectDir, SKILLS_RELATIVE_PATH);
+  if (fs.existsSync(sourceDir) && fs.existsSync(canonical) &&
+      fs.realpathSync(sourceDir) === fs.realpathSync(canonical)) {
+    throw new Error("Source skills must be separate from the project's .agents/skills directory.");
+  }
+  for (const name of skillNames) {
+    const destination = path.join(canonical, name);
+    if (lstatIfExists(destination)?.isSymbolicLink()) {
+      throw new Error(`Expected a real skill directory: ${destination}`);
+    }
+  }
   const state = readState(projectDir);
   const tools = Object.keys(TOOL_DIRS);
   const results = [];
@@ -281,26 +368,23 @@ function syncProject({ projectDir, sourceDir, force }) {
     version: VERSION,
     sourceDir,
     tools,
+    skillsDir: SKILLS_RELATIVE_PATH.split(path.sep).join("/"),
+    toolDirs: Object.fromEntries(Object.entries(TOOL_DIRS).map(([name, dir]) => [name, dir.split(path.sep).join("/")])),
     installedAt: new Date().toISOString(),
     skills: {},
   };
 
   ensureRepoGitignore(projectDir);
+  ensureDir(path.join(projectDir, SKILLS_RELATIVE_PATH));
 
   for (const skillName of skillNames) {
-    const snapshot = readSkillSnapshot(path.join(sourceDir, skillName));
+    const snapshot = snapshots.get(skillName);
     nextState.skills[skillName] = { sourceHash: snapshot.hash, tools: {} };
 
-    for (const toolName of tools) {
-      const result = installSkillForTool({
-        projectDir,
-        toolName,
-        skillName,
-        snapshot,
-        state,
-        force,
-      });
+    const result = installCanonicalSkill({ projectDir, skillName, snapshot, state, force });
+    nextState.skills[skillName].canonical = { hash: result.hash, files: result.files };
 
+    for (const toolName of tools) {
       nextState.skills[skillName].tools[toolName] = {
         hash: result.hash,
         files: result.files,
@@ -310,6 +394,7 @@ function syncProject({ projectDir, sourceDir, force }) {
     }
   }
 
+  linkToolSkills(projectDir);
   writeState(projectDir, nextState);
   return results;
 }
@@ -499,6 +584,8 @@ function runInit() {
 
   const results = syncProject({ projectDir, sourceDir, force: true });
   console.log(`Source: ${sourceDir}`);
+  console.log(`Project skills: ${path.join(projectDir, SKILLS_RELATIVE_PATH)}`);
+  console.log("Tool skills folders link to .agents/skills.");
   console.log(summarizeResults(results));
 
   const rootResults = installRootFiles({ projectDir, templatesDir, overwrite: true });
@@ -522,6 +609,7 @@ function runStatus() {
   console.log(`State file: ${statePath}`);
   console.log(`Source: ${state.sourceDir || "unknown"}`);
   console.log(`Tools: ${(state.tools || []).join(", ")}`);
+  if (state.skillsDir) console.log(`Project skills: ${state.skillsDir}`);
   console.log(`Skills: ${skillNames.length}`);
   for (const skillName of skillNames) {
     console.log(`- ${skillName}`);
@@ -577,6 +665,7 @@ async function runVerb(command, argv) {
 
 module.exports = {
   TOOL_DIRS,
+  SKILLS_RELATIVE_PATH,
   STATE_RELATIVE_PATH,
   DEFAULT_TEMPLATE_FILES,
   getDefaultSourceDir,

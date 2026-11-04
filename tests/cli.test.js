@@ -14,6 +14,7 @@ const {
   seedSkillsFromPackage,
   seedTemplatesFromPackage,
   pullPackageRepo,
+  TOOL_DIRS,
 } = require("../src/cli");
 
 function makeTempDir(name) {
@@ -38,7 +39,7 @@ function writeFile(filePath, content) {
   fs.writeFileSync(filePath, content, "utf8");
 }
 
-test("syncProject installs a canonical skill into all tool folders", () => {
+test("syncProject installs one canonical skill and links every tool folder", () => {
   const sourceDir = makeTempDir("ai-dev-source");
   const projectDir = makeTempDir("ai-dev-project");
 
@@ -47,6 +48,13 @@ test("syncProject installs a canonical skill into all tool folders", () => {
   const results = syncProject({ projectDir, sourceDir, force: false });
 
   assert.equal(results.length, 4);
+  const canonical = path.join(projectDir, ".agents", "skills");
+  assert.ok(fs.lstatSync(canonical).isDirectory());
+  for (const dir of Object.values(TOOL_DIRS)) {
+    const target = path.join(projectDir, dir);
+    assert.ok(fs.lstatSync(target).isSymbolicLink());
+    assert.equal(fs.realpathSync(target), fs.realpathSync(canonical));
+  }
   assert.equal(
     fs.existsSync(path.join(projectDir, ".claude", "skills", "debugging", "SKILL.md")),
     true
@@ -63,6 +71,103 @@ test("syncProject installs a canonical skill into all tool folders", () => {
     fs.existsSync(path.join(projectDir, ".trae", "skills", "debugging", "SKILL.md")),
     true
   );
+});
+
+test("repeat sync reuses links and repairs a local edit when forced", () => {
+  const sourceDir = makeTempDir("ai-dev-source");
+  const projectDir = makeTempDir("ai-dev-project");
+  writeFile(path.join(sourceDir, "demo", "SKILL.md"), "central");
+  syncProject({ projectDir, sourceDir, force: true });
+  assert.ok(syncProject({ projectDir, sourceDir, force: true }).every((r) => r.status === "unchanged"));
+  writeFile(path.join(projectDir, ".cursor", "skills", "demo", "SKILL.md"), "edited");
+  assert.ok(syncProject({ projectDir, sourceDir, force: false }).every((r) => r.status === "skipped"));
+  syncProject({ projectDir, sourceDir, force: true });
+  for (const dir of Object.values(TOOL_DIRS)) {
+    assert.equal(fs.readFileSync(path.join(projectDir, dir, "demo", "SKILL.md"), "utf8"), "central");
+    assert.equal(fs.existsSync(path.join(projectDir, `${dir}.ai-dev-backup`)), false);
+  }
+});
+
+test("migration archives existing tool skills without losing local-only skills or edits", () => {
+  const sourceDir = makeTempDir("ai-dev-source");
+  const projectDir = makeTempDir("ai-dev-project");
+  writeFile(path.join(sourceDir, "demo", "SKILL.md"), "central");
+  for (const dir of Object.values(TOOL_DIRS)) {
+    writeFile(path.join(projectDir, dir, "local", "SKILL.md"), "local edit");
+    writeFile(path.join(projectDir, `${dir}.ai-dev-backup`, "keep.txt"), "old backup");
+  }
+  syncProject({ projectDir, sourceDir, force: true });
+  for (const dir of Object.values(TOOL_DIRS)) {
+    assert.equal(fs.readFileSync(path.join(projectDir, `${dir}.ai-dev-backup-1`, "local", "SKILL.md"), "utf8"), "local edit");
+    assert.equal(fs.readFileSync(path.join(projectDir, `${dir}.ai-dev-backup`, "keep.txt"), "utf8"), "old backup");
+    assert.ok(fs.lstatSync(path.join(projectDir, dir)).isSymbolicLink());
+  }
+});
+
+test("empty central store still creates the shared directory and links", () => {
+  const projectDir = makeTempDir("ai-dev-project");
+  assert.deepEqual(syncProject({ projectDir, sourceDir: makeTempDir("ai-dev-source"), force: true }), []);
+  for (const dir of Object.values(TOOL_DIRS)) assert.ok(fs.lstatSync(path.join(projectDir, dir)).isSymbolicLink());
+});
+
+test("foreign and dangling tool links are rejected without touching their targets", () => {
+  for (const dangling of [false, true]) {
+    const projectDir = makeTempDir("ai-dev-project");
+    const sourceDir = makeTempDir("ai-dev-source");
+    const foreign = path.join(makeTempDir("ai-dev-foreign"), "skills");
+    if (!dangling) writeFile(path.join(foreign, "keep.txt"), "keep");
+    fs.mkdirSync(path.join(projectDir, ".claude"));
+    fs.symlinkSync(foreign, path.join(projectDir, ".claude", "skills"), process.platform === "win32" ? "junction" : "dir");
+    assert.throws(() => syncProject({ projectDir, sourceDir, force: true }), /points elsewhere/);
+    assert.equal(fs.existsSync(path.join(projectDir, ".agents")), false);
+    if (!dangling) assert.equal(fs.readFileSync(path.join(foreign, "keep.txt"), "utf8"), "keep");
+  }
+});
+
+test("invalid source fails before creating tool folders", () => {
+  const projectDir = makeTempDir("ai-dev-project");
+  const sourceDir = makeTempDir("ai-dev-source");
+  writeFile(path.join(sourceDir, "broken", "notes.md"), "missing skill");
+  assert.throws(() => syncProject({ projectDir, sourceDir, force: true }), /Missing SKILL.md/);
+  assert.equal(fs.existsSync(path.join(projectDir, ".agents")), false);
+});
+
+test("linked parent folders and canonical skill directories are rejected", () => {
+  for (const relative of [".agents", ".claude", path.join(".agents", "skills", "demo")]) {
+    const projectDir = makeTempDir("ai-dev-project");
+    const sourceDir = makeTempDir("ai-dev-source");
+    const foreign = makeTempDir("ai-dev-foreign");
+    writeFile(path.join(sourceDir, "demo", "SKILL.md"), "central");
+    const target = path.join(projectDir, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.symlinkSync(foreign, target, process.platform === "win32" ? "junction" : "dir");
+    assert.throws(() => syncProject({ projectDir, sourceDir, force: true }), /Expected a real/);
+    assert.deepEqual(fs.readdirSync(foreign), []);
+  }
+});
+
+test("canonical directory cannot also be the source", () => {
+  const projectDir = makeTempDir("ai-dev-project");
+  const sourceDir = path.join(projectDir, ".agents", "skills");
+  writeFile(path.join(sourceDir, "demo", "SKILL.md"), "keep");
+  assert.throws(() => syncProject({ projectDir, sourceDir, force: true }), /Source skills must be separate/);
+  assert.equal(fs.readFileSync(path.join(sourceDir, "demo", "SKILL.md"), "utf8"), "keep");
+});
+
+test("link creation failure restores the original tool directory", () => {
+  const projectDir = makeTempDir("ai-dev-project");
+  const sourceDir = makeTempDir("ai-dev-source");
+  const original = path.join(projectDir, ".claude", "skills", "keep.txt");
+  writeFile(original, "keep");
+  const symlinkSync = fs.symlinkSync;
+  fs.symlinkSync = () => { throw new Error("link creation denied"); };
+  try {
+    assert.throws(() => syncProject({ projectDir, sourceDir, force: true }), /Could not link.*link creation denied/);
+  } finally {
+    fs.symlinkSync = symlinkSync;
+  }
+  assert.equal(fs.readFileSync(original, "utf8"), "keep");
+  assert.equal(fs.existsSync(path.join(projectDir, ".ai-dev", "state.json")), false);
 });
 
 test("syncProject skips locally edited managed skills during safe sync", () => {
@@ -96,10 +201,10 @@ test("syncProject adds gitignore rules for installed skill folders", () => {
 
   assert.match(gitignore, /# ai-dev/);
   assert.match(gitignore, /\.ai-dev\//);
-  assert.match(gitignore, /\.claude\/skills\//);
-  assert.match(gitignore, /\.codex\/skills\//);
-  assert.match(gitignore, /\.cursor\/skills\//);
-  assert.match(gitignore, /\.trae\/skills\//);
+  assert.match(gitignore, /\.agents\/skills\//);
+  for (const tool of ["claude", "codex", "cursor", "trae"]) {
+    assert.ok(gitignore.includes(`/.${tool}/skills\n`));
+  }
 });
 
 test("syncProject preserves existing gitignore content and does not duplicate rules", () => {
@@ -194,7 +299,7 @@ test("init keeps a single gitignore header across skills and root files", () => 
 
   const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf8");
   assert.equal((gitignore.match(/# ai-dev/g) || []).length, 1);
-  assert.match(gitignore, /\.claude\/skills\//);
+  assert.match(gitignore, /\/\.claude\/skills$/m);
   assert.match(gitignore, /^\/AGENTS\.md$/m);
 });
 

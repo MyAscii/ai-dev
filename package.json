@@ -10,7 +10,8 @@
   },
   "type": "commonjs",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "eval": "node evals/shared-skills.cjs"
   },
   "engines": {
     "node": ">=18"
